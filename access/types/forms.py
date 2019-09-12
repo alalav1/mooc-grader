@@ -322,12 +322,18 @@ class GradedForm(forms.Form):
                 prev = i
                 i, ok, p = self.grade_field(i, field)
                 points += p
-                if not ok:
+                if self.exercise["feedback"]:
+                    self.fields[self.field_name(prev, field)].grade_points = field.get('points', 0)
+                elif not ok:
                     error_fields.append(self.field_name(prev, field))
                     gname = self.group_name(g)
                     if gname not in error_groups:
                         error_groups.append(gname)
             g += 1
+
+        if self.exercise["feedback"]:
+                points = self.exercise["max_points"]
+                return (points, [], [])
         return (points, error_groups, error_fields)
 
     def compare_values(self, method, val, cmp):
@@ -452,6 +458,12 @@ class GradedForm(forms.Form):
         else:
             raise ConfigError("Unknown field type for grading: %s" % (t))
 
+        points = configuration.get('points', 0)
+        points_got = points if ok else 0
+        if configuration.get('partial_points'):
+            points_got = max(int(points*ok),0)
+            ok = (ok == 1)
+
         # Apply new feedback definitions.
         for fb in configuration.get("feedback", []):
             new_hint = fb.get('label', None)
@@ -476,12 +488,11 @@ class GradedForm(forms.Form):
             if add:
                 hints.append(new_hint)
 
-        points = configuration.get('points', 0)
         if name in self.fields:
-            self.fields[name].grade_points = points if ok else 0
+            self.fields[name].grade_points = points_got
             self.fields[name].max_points = points
             self.fields[name].hints = hints
-        return i + 1, ok, points if ok else 0
+        return i + 1, ok, points_got
 
     def row_options(self, configuration, row):
         hint = row.get('hint', '')
@@ -499,27 +510,40 @@ class GradedForm(forms.Form):
     def grade_checkbox(self, configuration, value, hints=None):
         hints = hints or []
         correct_count = 0
-
-        # All correct required if any configured
+        wrong_answers = 0
+        non_neutral_count = 0
+        # All correct required if any configured and partial-points not set
         correct = True
         i = 0
         for opt in configuration.get("options", []):
             name = self.option_name(i, opt)
-            if opt.get("correct", False):
+            correct_answer = opt.get("correct", False)
+            # correct_answer may be boolean or string "neutral"
+            if correct_answer is True:
                 correct_count += 1
+                non_neutral_count += 1
                 if name not in value:
+                    wrong_answers += 1
                     correct = False
                     self.append_hint(hints, opt)
-            elif not value is None and name in value:
-                correct = False
-                self.append_hint(hints, opt)
+            elif correct_answer is False:
+                non_neutral_count += 1
+                if not value is None and name in value:
+                    correct = False
+                    wrong_answers += 1
+                    self.append_hint(hints, opt)
             i += 1
+
+        #if partial_points are set, correct is scaled to 0-1 float, to be factored to max points
+        #The zero points limit is in the half of the correct answers
+        if configuration.get("partial_points"):
+            correct = float(non_neutral_count / 2 - wrong_answers) / (non_neutral_count / 2)
 
         # Add note of multiple correct answers.
         if correct_count > 1 and len(value) == 1:
             hints.append(_("Multiple choices are selectable."))
 
-        return correct_count == 0 or correct, hints, 'array'
+        return correct, hints, 'array'
 
     def grade_radio(self, configuration, value, hints=None):
         hints = hints or []
