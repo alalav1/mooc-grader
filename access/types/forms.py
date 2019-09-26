@@ -89,7 +89,7 @@ class GradedForm(forms.Form):
                 t = field["type"]
 
                 # Create a field by type.
-                choices, initial, correct = self.create_choices(field)
+                choices, initial, correct = self.create_choices(field, args)
                 if t == "checkbox":
                     i, f = self.add_field(i, field,
                         forms.MultipleChoiceField, forms.CheckboxSelectMultiple,
@@ -164,7 +164,7 @@ class GradedForm(forms.Form):
 
     def add_table_fields(self, i, config, field_class, widget_class, multiple=False):
         fields = []
-        choices, initial, correct = self.create_choices(config)
+        choices, initial, correct = self.create_choices(config, args)
         for row in config.get('rows', []):
 
             if self.show_correct:
@@ -257,7 +257,7 @@ class GradedForm(forms.Form):
             more += template_to_str(None, None, configuration["include"])
         return more or None
 
-    def create_choices(self, configuration):
+    def create_choices(self, configuration, args = None):
         '''
         Creates field choices by configuration.
 
@@ -265,17 +265,55 @@ class GradedForm(forms.Form):
         choices = []
         initial = []
         correct = []
-        if "options" in configuration:
-            i = 0
-            for opt in configuration["options"]:
-                label = opt.get('label', "")
-                value = self.option_name(i, opt)
-                choices.append((value, mark_safe(label)))
-                if opt.get('correct', False):
-                    correct.append(value)
-                if opt.get('selected', False) or opt.get('initial', False):
-                    initial.append(value)
-                i += 1
+        options = configuration.get('options',[])
+        if options:
+            if not 'randomized' in configuration:
+                i = 0
+                for opt in options:
+                    label = opt.get('label', "")
+                    value = self.option_name(i, opt)
+                    choices.append((value, mark_safe(label)))
+                    if opt.get('correct', False):
+                        correct.append(value)
+                    if opt.get('selected', False) or opt.get('initial', False):
+                        initial.append(value)
+                    i += 1
+            else:
+                i = 0
+                correct_indexes = []
+                for opt in options:
+                    if opt.get('correct', False):
+                        correct_indexes.append(i)
+                    i += 1
+                incorrect_indexes = [x for x in range(len(options)) \
+                            if x not in correct_indexes]
+                samples = []
+                if args is not None and args[0] is not None:
+                    stupid_string = args[0].get('a_sample', samples)
+                    for a in stupid_string:
+                        try:
+                            samples.append(int(a))
+                        except:
+                            pass
+                if not samples:
+                    randomized = configuration['randomized']
+                    correct_count = configuration.get('correct_count')
+                    if correct_count:
+                        samples = random.sample(correct_indexes,correct_count) \
+                    + random.sample(incorrect_indexes, randomized - correct_count)
+                    else:
+                        samples = random.sample(range(len(options)), randomized)
+                self.a_sample = samples
+                for a in samples:
+                    opt = options[a]
+                    label = opt.get('label', "")
+                    value = self.option_name(a, opt)
+                    choices.append((value, mark_safe(label)))
+                    if opt.get('correct', False):
+                        correct.append(value)
+                    if opt.get('selected', False) or opt.get('initial', False):
+                        initial.append(value)
+
         return choices, initial, correct
 
     def group_name(self, i):
@@ -503,16 +541,22 @@ class GradedForm(forms.Form):
         # All correct required if any configured
         correct = True
         i = 0
+        list = range(len(configuration.get("options", [])))
+        try:
+            list = self.a_sample
+        except:
+            pass
         for opt in configuration.get("options", []):
-            name = self.option_name(i, opt)
-            if opt.get("correct", False):
-                correct_count += 1
-                if name not in value:
+            if i in list:
+                name = self.option_name(i, opt)
+                if opt.get("correct", False):
+                    correct_count += 1
+                    if name not in value:
+                        correct = False
+                        self.append_hint(hints, opt)
+                elif not value is None and name in value:
                     correct = False
                     self.append_hint(hints, opt)
-            elif not value is None and name in value:
-                correct = False
-                self.append_hint(hints, opt)
             i += 1
 
         # Add note of multiple correct answers.

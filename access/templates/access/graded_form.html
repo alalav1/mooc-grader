@@ -130,6 +130,11 @@
 	{% if field.field.close_set %}
 	</fieldset>
 	{% endif %}
+	{% if field.field.nonce or result.form.a_sample or field.field.checksum %}
+	<input type="hidden" name="a_nonce" value="{{ field.field.nonce }}" />
+	<input type="hidden" name="a_sample" value="{{ result.form.a_sample }}" />
+	<input type="hidden" name="a_checksum" value="{{ field.field.checksum }}" />
+	{% endif %}
 	{% endfor %}
 
 	{% if post_url or not result.accepted %}
