@@ -343,9 +343,11 @@ class GradedForm(forms.Form):
         if not self.request:
             return range(index_range)
         # Int overflow error is technically possible
-        calculated_seed = int(self.request.GET.get('ordinal_number', 1)) + sum(
+        random.seed(sum(
             [int(uid) for uid in self.request.GET.get('uid', '1').split('-')]
-        )
+        ))
+        calculated_seed = int(self.request.GET.get('ordinal_number', 1)) + random.randrange(10000000000)
+
         random.seed(calculated_seed)
         random_sample = []
         if is_checkbox_question:
