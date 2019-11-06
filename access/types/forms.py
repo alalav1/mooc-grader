@@ -32,7 +32,9 @@ class GradedForm(forms.Form):
             raise ConfigError("Missing exercise configuration from form arguments.")
         self.exercise = kwargs.pop("exercise")
         self.show_correct = kwargs.pop('show_correct') if 'show_correct' in kwargs else False
-        self.show_correct_once = kwargs.pop('show_correct_once') if 'show_correct_once' in kwargs else False
+        self.show_correct_once = False
+        if self.exercise.get('show_correct_once', False):
+            self.show_correct_once = kwargs.pop('show_correct_once') if 'show_correct_once' in kwargs else False
         self.request = kwargs.pop('request') if 'request' in kwargs else None
         kwargs['label_suffix'] = ''
         super(forms.Form, self).__init__(*args, **kwargs)
